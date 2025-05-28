@@ -129,6 +129,9 @@ public class ChargeServiceImpl implements com.bupt.charger.service.ChargeService
 
     @Override
     public void ModifyRequestAmount(ModifyChargeAmountRequest request) {
+        if(!appConfig.SCHEDULE_TYPE.equals("BASIC")){
+            throw new ApiException("不是普通调度，禁止修改充电请求");
+        }
         var carId = request.getCarId();
         Car car = carRepository.findByCarId(carId);
         if (car == null) {
@@ -151,6 +154,10 @@ public class ChargeServiceImpl implements com.bupt.charger.service.ChargeService
 
     @Override
     public void ModifyRequestMode(ModifyChargeModeRequest request) {
+        if(!appConfig.SCHEDULE_TYPE.equals("BASIC")){
+            throw new ApiException("不是普通调度，禁止修改充电请求");
+        }
+
         var carId = request.getCarId();
         Car car = carRepository.findByCarId(carId);
         if (car == null) {
@@ -277,7 +284,7 @@ public class ChargeServiceImpl implements com.bupt.charger.service.ChargeService
             scheduleService.remindCarStartCharge(pile.getPileId());
 
             // 结束充电后调用调度函数，将等候区的车辆移到充电区
-            scheduleService.moveToChargingQueue();
+            scheduleService.trySchedule();
             return;
         }
 
@@ -315,7 +322,7 @@ public class ChargeServiceImpl implements com.bupt.charger.service.ChargeService
         scheduleService.remindCarStartCharge(pile.getPileId());
 
         // 结束充电后调用调度函数，将等候区的车辆移到充电区
-        scheduleService.moveToChargingQueue();
+        scheduleService.trySchedule();
     }
 
 

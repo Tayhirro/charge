@@ -89,7 +89,7 @@ public class ScheduleServiceImpl implements com.bupt.charger.service.ScheduleSer
             throw new ApiException("等候区已经爆满不可进入");
         }
         // 调用调度函数
-        moveToChargingQueue();
+        trySchedule();
         return res;
     }
 
@@ -127,28 +127,36 @@ public class ScheduleServiceImpl implements com.bupt.charger.service.ScheduleSer
         return true;
     }
 
-
-    // 进入充电区f
     @Override
-    public void moveToChargingQueue() {
+    public void trySchedule() {
         //  以下情况会调用这个函数：1. 有车辆发送结束充电请求 2. 刚进入等候区（因为这个时候可能有多个充电队列空余） 3. 提交故障请求时，因为可能其他多个充电队列空余，但故障仅发生在有车充电的充电桩里面了 4. 充电桩故障完恢复上线时(暂时没有处理) 故障恢复需要完成的调度：恢复当时就执行该函数,充电桩有多少空余就先执行多少次
+        //  schedule-type: BASIC # 调度算法，BASIC 、 SINGLE_SHORTEST_TIME 或 BATCH_SHORTEST_TIME
+        if (appConfig.SCHEDULE_TYPE.equals("BASIC")){
+            // 获取两个模式下的空余队列
+            List<Pile> fastPiles = getChargingNotFullQueue(Pile.Mode.F);
+            List<Pile> slowPiles = getChargingNotFullQueue(Pile.Mode.T);
+            // 如果两个故障队列都空了，那么恢复叫号服务
+            ChargingQueue errorF = chargingQueueRepository.findByQueueId("ErrorF");
+            ChargingQueue errorT = chargingQueueRepository.findByQueueId("ErrorT");
+            if (errorT.getWaitingCarCnt() == 0 && errorF.getWaitingCarCnt() == 0) {
+                isStopWaitArea = false;
+            }
+            if (fastPiles != null && !fastPiles.isEmpty()) {
+                basicSchedule(fastPiles, Pile.Mode.F);
+            }
 
-        // 获取两个模式下的空余队列
-        List<Pile> fastPiles = getChargingNotFullQueue(Pile.Mode.F);
-        List<Pile> slowPiles = getChargingNotFullQueue(Pile.Mode.T);
-        // 如果两个故障队列都空了，那么恢复叫号服务
-        ChargingQueue errorF = chargingQueueRepository.findByQueueId("ErrorF");
-        ChargingQueue errorT = chargingQueueRepository.findByQueueId("ErrorT");
-        if (errorT.getWaitingCarCnt() == 0 && errorF.getWaitingCarCnt() == 0) {
-            isStopWaitArea = false;
-        }
-        if (fastPiles != null && fastPiles.size() > 0) {
-            basicSchedule(fastPiles, Pile.Mode.F);
+            if (slowPiles != null && !slowPiles.isEmpty()) {
+                basicSchedule(slowPiles, Pile.Mode.T);
+            }
+        } else if (appConfig.SCHEDULE_TYPE.equals("SINGLE_SHORTEST_TIME")) {
+            //不用考虑客户修改充电请求以及充电桩出现故障
+            //a)	单次调度总充电时长最短 todo
+
+        } else if(appConfig.SCHEDULE_TYPE.equals("BATCH_SHORTEST_TIME")){
+            //不用考虑客户修改充电请求以及充电桩出现故障
+            //b)	批量调度总充电时长最短： todo
         }
 
-        if (slowPiles != null && slowPiles.size() > 0) {
-            basicSchedule(slowPiles, Pile.Mode.T);
-        }
     }
 
     // 将指定车辆从等候区移除
@@ -169,7 +177,6 @@ public class ScheduleServiceImpl implements com.bupt.charger.service.ScheduleSer
     }
 
     // 基本调度策略
-    @Override
     public String basicSchedule(List<Pile> piles, Pile.Mode mode) {
         if (piles == null || piles.size() == 0) {
             return null;
@@ -272,7 +279,6 @@ public class ScheduleServiceImpl implements com.bupt.charger.service.ScheduleSer
     }
 
     // 这个是故障机制中，故障充电桩车辆停止充电
-    @Override
     public void errorStopCharging(String carId) {
         //    停止充电，但是不能更改Car的进入等候区的状态
 
@@ -397,7 +403,7 @@ public class ScheduleServiceImpl implements com.bupt.charger.service.ScheduleSer
         chargingQueueRepository.save(errorQueue);
         //    调度移到充电桩,因为可能有多个空余，宁可多调用几次，所以有几个车辆在故障队列就调用几次检测
         for (int i = 0; i < errorQueue.getWaitingCarCnt(); i++) {
-            moveToChargingQueue();
+            trySchedule();
         }
     }
 

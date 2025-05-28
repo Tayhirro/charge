@@ -1,5 +1,6 @@
 package com.bupt.charger.service.impl;
 
+import com.bupt.charger.config.AppConfig;
 import com.bupt.charger.dto.request.*;
 import com.bupt.charger.dto.response.*;
 import com.bupt.charger.entity.Admin;
@@ -53,6 +54,9 @@ public class AdminServiceImpl implements com.bupt.charger.service.AdminService {
     @Autowired
     private PilesRepository pilesRepository;
 
+    @Autowired
+    private AppConfig appConfig;
+
     @Override
     public void startPile(StartPileRequest startPileRequest) throws ApiException {
         log.info("Admin try to start pile: " + startPileRequest.getPileId());
@@ -67,7 +71,7 @@ public class AdminServiceImpl implements com.bupt.charger.service.AdminService {
         pile.setStatus(Pile.Status.FREE);
         // 有几个空位就调度几次，防止有空余的没有被调度
         for (int i = 0; i < pile.getCapacity(); i++) {
-            scheduleService.moveToChargingQueue();
+            scheduleService.trySchedule();
         }
         pilesRepository.save(pile);
 
@@ -75,6 +79,9 @@ public class AdminServiceImpl implements com.bupt.charger.service.AdminService {
 
     @Override
     public void shutDownPile(ShutDownPileRequest shutDownPileRequest) throws ApiException {
+        if(!appConfig.SCHEDULE_TYPE.equals("BASIC")){
+            throw new ApiException("不是普通调度，禁止关闭充电桩");
+        }
         log.info("Admin try to shut down pile: " + shutDownPileRequest.getPileId());
         var pileId = shutDownPileRequest.getPileId();
         Pile pile = pilesRepository.findByPile(pileId);
@@ -190,6 +197,9 @@ public class AdminServiceImpl implements com.bupt.charger.service.AdminService {
 
     @Override
     public void diePile(DiePileRequest diePileRequest) throws ApiException {
+        if(!appConfig.SCHEDULE_TYPE.equals("BASIC")){
+            throw new ApiException("不是普通调度，禁止故障充电桩");
+        }
         log.info("Admin try to die pile: " + diePileRequest.getPileId());
         var pileId = diePileRequest.getPileId();
         Pile pile = pilesRepository.findByPile(pileId);
